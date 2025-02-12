@@ -16,7 +16,7 @@ if ! command -v ufw &> /dev/null; then
 fi
 
 # Install paket yang diperlukan
-apt install -y openvpn easy-rsa iptables
+apt install -y openvpn easy-rsa iptables iptables-persistent
 
 # Konfigurasi UFW
 ufw allow OpenSSH
@@ -54,7 +54,7 @@ EASYRSA_BATCH=1 "$easy_rsa_bin" sign-req server server
 EASYRSA_BATCH=1 "$easy_rsa_bin" gen-dh
 
 # Buat TLS key
-openvpn --genkey secret /etc/openvpn/ta.key
+openvpn --genkey --secret /etc/openvpn/ta.key
 
 # Salin file ke direktori OpenVPN
 cp pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
@@ -80,14 +80,23 @@ status /var/log/openvpn-status.log
 log /var/log/openvpn/openvpn.log
 verb 3
 explicit-exit-notify 1
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 8.8.8.8"
+push "dhcp-option DNS 1.1.1.1"
 EOF
 
 # Aktifkan IP forwarding
 sysctl -w net.ipv4.ip_forward=1
 echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+sysctl -p
 
 # Pastikan direktori iptables ada
 mkdir -p /etc/iptables
+
+# Tambahkan iptables rules
+iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -s 10.8.0.0/24 -j ACCEPT
 
 # Simpan aturan iptables
 iptables-save > /etc/iptables/rules.v4
@@ -129,7 +138,6 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-tls-auth ta.key 1
 auth SHA256
 cipher AES-256-CBC
 verb 3
@@ -142,6 +150,8 @@ $(cat /etc/openvpn/$CLIENT_NAME.crt)
 <key>
 $(cat /etc/openvpn/$CLIENT_NAME.key)
 </key>
+tls-auth /etc/openvpn/ta.key 1
+key-direction 1
 <tls-auth>
 $(cat /etc/openvpn/ta.key)
 </tls-auth>
