@@ -112,6 +112,7 @@ COMMIT
 EOF
 
 ufw reload
+echo "net.ipv4.ip_forward=1" | tee -a /etc/sysctl.conf
 
 # Restart OpenVPN dan aktifkan saat boot
 systemctl restart openvpn@server
